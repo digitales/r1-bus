@@ -1,6 +1,6 @@
 <?php
 
-use App\Models\Setting;
+use App\Services\BusStore;
 use App\Services\DeviceToken;
 
 it('creates a long token on first use and keeps it', function () {
@@ -10,7 +10,7 @@ it('creates a long token on first use and keeps it', function () {
 
     expect(strlen($first))->toBe(48)
         ->and($tokens->current())->toBe($first)
-        ->and(Setting::count())->toBe(1);
+        ->and(app(BusStore::class)->deviceToken())->toBe($first);
 });
 
 it('matches only the current token', function () {
@@ -31,5 +31,5 @@ it('invalidates the old token when regenerated', function () {
     expect($new)->not->toBe($old)
         ->and($tokens->matches($old))->toBeFalse()
         ->and($tokens->matches($new))->toBeTrue()
-        ->and(Setting::count())->toBe(1);
+        ->and(app(BusStore::class)->deviceToken())->toBe($new);
 });

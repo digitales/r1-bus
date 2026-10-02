@@ -2,31 +2,27 @@
 
 namespace App\Services;
 
-use App\Models\Setting;
 use Illuminate\Support\Str;
 
 final class DeviceToken
 {
+    public function __construct(private BusStore $store) {}
+
     public function current(): string
     {
-        return $this->setting()->device_token;
+        return $this->store->deviceToken() ?? $this->regenerate();
     }
 
     public function regenerate(): string
     {
-        $setting = $this->setting();
-        $setting->update(['device_token' => Str::random(48)]);
+        $token = Str::random(48);
+        $this->store->setDeviceToken($token);
 
-        return $setting->device_token;
+        return $token;
     }
 
     public function matches(string $candidate): bool
     {
         return hash_equals($this->current(), $candidate);
-    }
-
-    private function setting(): Setting
-    {
-        return Setting::query()->first() ?? Setting::create(['device_token' => Str::random(48)]);
     }
 }
