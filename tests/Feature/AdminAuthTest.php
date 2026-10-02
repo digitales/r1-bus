@@ -84,3 +84,22 @@ it('refuses a short password or a bad email', function (string $email, string $p
     'short password' => ['ross@example.com', 'short'],
     'bad email' => ['not-an-email', 'correct-horse-battery'],
 ]);
+
+it('does not let device polling use up login attempts', function () {
+    $user = User::factory()->create(['password' => 'correct-horse-battery']);
+    $this->travelTo(Carbon\CarbonImmutable::parse('2026-10-05 10:00:00', 'Europe/London'));
+
+    foreach (range(1, 6) as $poll) {
+        $this->getJson(deviceUrl('/arrivals'))->assertOk();
+    }
+
+    $this->post('/login', ['email' => $user->email, 'password' => 'correct-horse-battery'])
+        ->assertRedirect('/admin');
+});
+
+it('creates an admin without a prompt when given a password option', function () {
+    $this->artisan('bus:make-admin', ['email' => 'ross@example.com', '--password' => 'correct-horse-battery'])
+        ->assertSuccessful();
+
+    expect(Auth::attempt(['email' => 'ross@example.com', 'password' => 'correct-horse-battery']))->toBeTrue();
+});

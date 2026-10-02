@@ -54,7 +54,13 @@ final class TflClient
      */
     public function arrivals(string $naptanId): array
     {
-        return array_values($this->get('/StopPoint/'.rawurlencode($naptanId).'/Arrivals'));
+        $predictions = $this->get('/StopPoint/'.rawurlencode($naptanId).'/Arrivals');
+
+        if (! array_is_list($predictions)) {
+            throw new TflUnavailable('TfL sent arrivals that were not a list.');
+        }
+
+        return $predictions;
     }
 
     private function collectBusStops(array $node, array &$stops): void

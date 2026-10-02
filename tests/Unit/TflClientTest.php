@@ -124,3 +124,9 @@ it('reports TfL unavailable when a 200 response is not JSON', function () {
 
     expect(fn () => (new TflClient)->arrivals('490000007F'))->toThrow(TflUnavailable::class);
 });
+
+it('reports TfL unavailable when arrivals come back as a JSON object instead of a list', function () {
+    Http::fake(['api.tfl.gov.uk/*' => Http::response(['message' => 'Something went wrong'], 200)]);
+
+    expect(fn () => (new TflClient)->arrivals('490000007F'))->toThrow(TflUnavailable::class);
+});

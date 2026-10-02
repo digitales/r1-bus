@@ -8,7 +8,8 @@ use Illuminate\Support\Facades\Validator;
 
 class MakeAdmin extends Command
 {
-    protected $signature = 'bus:make-admin {email}';
+    protected $signature = 'bus:make-admin {email}
+        {--password= : Skip the prompt, for command runners with no terminal}';
 
     protected $description = 'Create the admin user, or reset their password';
 
@@ -16,7 +17,7 @@ class MakeAdmin extends Command
     {
         $input = [
             'email' => $this->argument('email'),
-            'password' => (string) $this->secret('Password (min 12 characters)'),
+            'password' => (string) ($this->option('password') ?? $this->secret('Password (min 12 characters)')),
         ];
 
         $validator = Validator::make($input, [

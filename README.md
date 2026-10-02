@@ -59,9 +59,10 @@ The Laravel framework is open-sourced software licensed under the [MIT license](
 
 ## Running it
 
-- Tests: `./vendor/bin/pest`
+- Tests: `./vendor/bin/pest` for PHP, `npm test` for the R1 page script (Node only, no install needed).
 - Local: `php artisan migrate && php artisan bus:make-admin you@example.com && php artisan serve`
 - Admin: `/login`, then set the morning and afternoon stops.
 - R1: the link is shown on the admin page. Regenerating it disables the old one.
 - Windows and weekdays live in `config/bus.php`.
 - `TFL_APP_KEY` is optional locally and should be set in production.
+- Where there is no terminal to prompt on (a hosted command runner), pass the password inline: `php artisan bus:make-admin you@example.com --password='...'`. It will show in that runner's command history, so prefer the prompt when you have one.

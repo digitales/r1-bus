@@ -40,6 +40,9 @@
             var inWindow = false;
             var showingCheck = false;
             var busy = false;
+            var footText = '';
+            var lastLabel = null;
+            var failedSince = null;
 
             function el(id) { return document.getElementById(id); }
 
@@ -72,6 +75,11 @@
                 list.hidden = false;
             }
 
+            function setFoot(text) {
+                footText = text;
+                el('foot').textContent = text;
+            }
+
             function setCheck(label) {
                 el('check').hidden = label === null;
                 if (label !== null) { el('check').textContent = label; }
@@ -82,12 +90,18 @@
             }
 
             function show(data, wasCheck) {
+                failedSince = null;
+
                 if (data.state === 'outside_window') {
                     inWindow = false;
-                    if (showingCheck) { return; }
+                    if (showingCheck) {
+                        el('foot').textContent = footText;
+                        return;
+                    }
+                    lastLabel = null;
                     setHead('Outside hours', '');
                     setMessage(data.next_window_label);
-                    el('foot').textContent = '';
+                    setFoot('');
                     setCheck('Check now');
                     return;
                 }
@@ -98,33 +112,57 @@
                 if (data.state === 'no_stop') {
                     setHead('Bus times', '');
                     setMessage('No stop set. Use admin');
-                    el('foot').textContent = '';
+                    lastLabel = null;
+                    setFoot('');
                 } else if (data.state === 'unavailable') {
                     setHead('Bus times', '');
                     setMessage('TfL unavailable, retrying');
-                    el('foot').textContent = '';
+                    lastLabel = null;
+                    setFoot('');
                 } else {
                     setHead(stopTitle(data.stop), data.stop.towards ? 'towards ' + data.stop.towards : '');
                     if (data.arrivals.length) { setList(data.arrivals); } else { setMessage('No buses due'); }
-                    el('foot').textContent = data.stale
+                    lastLabel = data.fetched_label;
+                    setFoot(data.stale
                         ? 'Stale, ' + data.stale_minutes + ' min old'
-                        : (wasCheck ? 'Checked ' : 'Updated ') + data.fetched_label;
+                        : (wasCheck ? 'Checked ' : 'Updated ') + data.fetched_label);
                 }
 
                 setCheck(inWindow ? null : (showingCheck ? 'Check again' : 'Check now'));
             }
 
+            // Old bus times are worse than none: after a minute without a
+            // response they come off the screen.
+            function fail() {
+                if (failedSince === null) { failedSince = Date.now(); }
+
+                if (Date.now() - failedSince >= 60000) {
+                    showingCheck = false;
+                    lastLabel = null;
+                    footText = '';
+                    setMessage('No connection');
+                    setCheck(inWindow ? null : 'Check now');
+                }
+
+                el('foot').textContent = lastLabel ? 'No connection, last ' + lastLabel : 'No connection, retrying';
+            }
+
             function load(check) {
                 if (busy) { return; }
                 busy = true;
-                fetch(url + (check ? '?check=1' : ''), { headers: { Accept: 'application/json' }, cache: 'no-store' })
+                var controller = new AbortController();
+                var timer = setTimeout(function () { controller.abort(); }, 15000);
+                fetch(url + (check ? '?check=1' : ''), { headers: { Accept: 'application/json' }, cache: 'no-store', signal: controller.signal })
                     .then(function (response) {
                         if (!response.ok) { throw new Error(response.status); }
                         return response.json();
                     })
                     .then(function (data) { show(data, check); })
-                    .catch(function () { el('foot').textContent = 'No connection, retrying'; })
-                    .then(function () { busy = false; });
+                    .catch(fail)
+                    .then(function () {
+                        clearTimeout(timer);
+                        busy = false;
+                    });
             }
 
             el('check').addEventListener('click', function () { load(true); });
