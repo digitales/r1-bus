@@ -21,7 +21,7 @@ class LoginController extends Controller
             'password' => ['required', 'string'],
         ]);
 
-        if (! Auth::attempt($credentials, remember: true)) {
+        if (! Auth::attempt($credentials)) {
             return back()->withErrors(['email' => 'Those details do not match.'])->onlyInput('email');
         }
 

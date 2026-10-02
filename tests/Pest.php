@@ -5,7 +5,10 @@ use App\Enums\Direction;
 use App\Enums\Slot;
 use App\Services\BusStore;
 use App\Services\DeviceToken;
+use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Sleep;
@@ -57,4 +60,14 @@ function saveStop(Slot $slot, string $naptanId, string $name, Direction $directi
 function savedStops(): array
 {
     return collect(app(BusStore::class)->stops())->flatten()->all();
+}
+
+/**
+ * Store an admin login and return the user the app would sign in.
+ */
+function makeAdmin(string $email = 'ross@example.com', string $password = 'correct-horse-battery'): Authenticatable
+{
+    app(BusStore::class)->setAdmin($email, Hash::make($password));
+
+    return Auth::getProvider()->retrieveById($email);
 }

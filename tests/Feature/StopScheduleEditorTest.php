@@ -4,7 +4,6 @@ use App\Data\Stop;
 use App\Enums\Direction;
 use App\Enums\Slot;
 use App\Livewire\StopScheduleEditor;
-use App\Models\User;
 use App\Services\BusStore;
 use App\Services\DeviceToken;
 use Carbon\CarbonImmutable;
@@ -59,7 +58,7 @@ function searchVictoria(string $slot = 'morning', string $direction = 'outward')
 }
 
 beforeEach(function () {
-    $this->actingAs(User::factory()->create());
+    $this->actingAs(makeAdmin());
 });
 
 it('renders on the admin page with both cards and the R1 link', function () {

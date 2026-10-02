@@ -2,6 +2,9 @@
 
 namespace App\Providers;
 
+use App\Auth\BusStoreUserProvider;
+use App\Services\BusStore;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -19,6 +22,6 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        //
+        Auth::provider('bus-store', fn ($app) => new BusStoreUserProvider($app->make(BusStore::class)));
     }
 }

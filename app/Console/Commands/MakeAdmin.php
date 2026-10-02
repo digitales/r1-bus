@@ -2,8 +2,9 @@
 
 namespace App\Console\Commands;
 
-use App\Models\User;
+use App\Services\BusStore;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
 
 class MakeAdmin extends Command
@@ -11,7 +12,7 @@ class MakeAdmin extends Command
     protected $signature = 'bus:make-admin {email}
         {--password= : Skip the prompt, for command runners with no terminal}';
 
-    protected $description = 'Create the admin user, or reset their password';
+    protected $description = 'Set the admin login, replacing any existing one';
 
     public function handle(): int
     {
@@ -33,10 +34,7 @@ class MakeAdmin extends Command
             return self::FAILURE;
         }
 
-        User::updateOrCreate(
-            ['email' => $input['email']],
-            ['name' => 'Admin', 'password' => $input['password']],
-        );
+        app(BusStore::class)->setAdmin($input['email'], Hash::make($input['password']));
 
         $this->info("Admin {$input['email']} is ready.");
 
