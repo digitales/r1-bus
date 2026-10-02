@@ -56,3 +56,12 @@ If you discover a security vulnerability within Laravel, please send an e-mail t
 ## License
 
 The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+
+## Running it
+
+- Tests: `./vendor/bin/pest`
+- Local: `php artisan migrate && php artisan bus:make-admin you@example.com && php artisan serve`
+- Admin: `/login`, then set the morning and afternoon stops.
+- R1: the link is shown on the admin page. Regenerating it disables the old one.
+- Windows and weekdays live in `config/bus.php`.
+- `TFL_APP_KEY` is optional locally and should be set in production.
