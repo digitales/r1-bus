@@ -11,7 +11,9 @@
         [hidden] { display: none !important; }
         #head { padding: 6px 8px 4px; border-bottom: 1px solid #333; }
         #stop, #towards, .dest { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        #stop { font-size: 15px; font-weight: 700; }
+        #top { display: flex; align-items: baseline; gap: 6px; }
+        #stop { flex: 1; min-width: 0; font-size: 15px; font-weight: 700; }
+        #count { font-size: 11px; color: #aaa; font-variant-numeric: tabular-nums; }
         #towards { font-size: 11px; color: #aaa; min-height: 13px; }
         #list { flex: 1; overflow-y: auto; list-style: none; }
         #list li { display: flex; align-items: center; gap: 6px; height: 38px; padding: 0 8px; border-bottom: 1px solid #222; }
@@ -25,7 +27,10 @@
 </head>
 <body>
     <header id="head">
-        <div id="stop">Bus times</div>
+        <div id="top">
+            <div id="stop">Bus times</div>
+            <div id="count" hidden></div>
+        </div>
         <div id="towards"></div>
     </header>
     <ul id="list" hidden></ul>
@@ -45,6 +50,7 @@
             var failedSince = null;
             var direction = 'outward';
             var again = false;
+            var nextPollAt = Date.now() + every;
 
             function el(id) { return document.getElementById(id); }
 
@@ -85,6 +91,16 @@
             function setCheck(label) {
                 el('check').hidden = label === null;
                 if (label !== null) { el('check').textContent = label; }
+            }
+
+            // Seconds until the next automatic refresh. Only a window refreshes
+            // on its own, so the count is hidden everywhere else.
+            function tick() {
+                var count = el('count');
+                count.hidden = !inWindow;
+                if (inWindow) {
+                    count.textContent = busy ? '\u2026' : Math.max(0, Math.ceil((nextPollAt - Date.now()) / 1000)) + 's';
+                }
             }
 
             function directionLabel() {
@@ -161,6 +177,7 @@
             function load(check) {
                 if (busy) { return; }
                 busy = true;
+                tick();
                 var controller = new AbortController();
                 var timer = setTimeout(function () { controller.abort(); }, 15000);
                 fetch(url + '?direction=' + direction + (check ? '&check=1' : ''), { headers: { Accept: 'application/json' }, cache: 'no-store', signal: controller.signal })
@@ -173,6 +190,7 @@
                     .then(function () {
                         clearTimeout(timer);
                         busy = false;
+                        tick();
                         if (again) {
                             again = false;
                             load(!inWindow);
@@ -195,7 +213,11 @@
             window.addEventListener('scrollUp', function () { el('list').scrollBy(0, -38); });
 
             load(false);
-            setInterval(function () { load(false); }, every);
+            setInterval(function () {
+                nextPollAt = Date.now() + every;
+                load(false);
+            }, every);
+            setInterval(tick, 1000);
         })();
     </script>
 </body>
