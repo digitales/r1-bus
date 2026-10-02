@@ -8,5 +8,5 @@
             <button type="submit" class="plain">Sign out</button>
         </form>
     </div>
-    {{-- stop schedule editor --}}
+    <livewire:stop-schedule-editor />
 @endsection
