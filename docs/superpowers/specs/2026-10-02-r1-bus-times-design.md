@@ -39,9 +39,11 @@ server side. The R1 never talks to TfL directly.
 ### Units
 
 **`TflClient`**: the only code that talks to TfL.
-- `searchStops(string $query): array`: bus stops matching a name. Resolves
-  search hits to individual stops so each result carries NaPTAN ID, common
-  name, stop letter and "towards" text.
+- `searchStops(string $query): array`: places matching a name. TfL returns
+  hubs and stop groups mixed with individual stops, so these are not yet
+  savable.
+- `stopsAt(string $id): array`: the individual bus stops under a place, each
+  with NaPTAN ID, common name, stop letter and "towards" text.
 - `arrivals(string $naptanId): array`: raw predictions for one stop.
 - 5 second timeout, one retry. Throws `TflUnavailable` on failure.
 
@@ -60,7 +62,11 @@ server side. The R1 never talks to TfL directly.
 **`ArrivalsService`**: joins the above.
 - `forSlot(Slot $slot): ArrivalsResult`: loads the slot's stop, calls
   `TflClient::arrivals`, maps to `route`, `destination`, `minutes`, sorts by
-  time to station ascending, caches 20 seconds per NaPTAN ID.
+  expected arrival ascending, keeps the first 10, caches 20 seconds per
+  NaPTAN ID. Minutes are recomputed on every read so a stale result still
+  counts down, and buses that have gone are dropped.
+- Returns null when the slot has no stop; throws `TflUnavailable` when TfL
+  fails and there is no usable last good result.
 - Keeps the last good result for 15 minutes for the stale fallback.
 - `ArrivalsResult` carries the stop, the arrivals, `fetchedAt` and a `stale`
   flag.
@@ -89,8 +95,11 @@ minute.
   "stop": {"name": "Angel Station", "letter": "D", "towards": "Islington"},
   "arrivals": [{"route": "73", "destination": "Stoke Newington", "minutes": 3}],
   "fetched_at": "2026-10-02T07:41:10+01:00",
+  "fetched_label": "07:41",
   "stale": false,
-  "next_window": null
+  "stale_minutes": 0,
+  "next_window": null,
+  "next_window_label": null
 }
 ```
 
@@ -105,8 +114,8 @@ slot are returned with `state: "live"`.
 
 1. R1 opens `/r1/{token}`.
 2. Page requests the arrivals JSON immediately and then every 20 seconds.
-3. Screen shows the stop name and letter, up to 5 arrivals, and the last
-   updated time.
+3. Screen shows the stop name and letter, about 5 arrivals at a time (up to
+   10 by scrolling), and the last updated time.
 
 ### Outside a window
 
@@ -129,8 +138,9 @@ slot are returned with `state: "live"`.
 ### Admin page
 
 - Two cards: Morning stop and Afternoon stop. Each shows the current stop and
-  a search box. Results list stop name, letter and "towards" so the correct
-  side of the road can be picked. Selecting one saves it.
+  a search box. Results list places; choosing a place that holds several
+  stops lists them with letter and "towards" so the correct side of the road
+  can be picked. Choosing a stop saves it.
 - Shows the R1 URL with a Regenerate button.
 - A change takes effect on the next R1 request.
 - The single admin user is created with an artisan command; there is no
