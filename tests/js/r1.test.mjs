@@ -48,7 +48,7 @@ function boot() {
         setInterval: (handler, ms) => { if (ms === 1000) { page.tick = handler; } else { page.poll = handler; } },
         setTimeout: (handler, ms) => { const timer = { handler, at: page.now + ms, cleared: false }; page.timers.push(timer); return timer; },
         clearTimeout: (timer) => { if (timer) { timer.cleared = true; } },
-        Date: { now: () => page.now },
+        Date: { now: () => page.now, parse: Date.parse },
         AbortController,
     });
 
@@ -85,6 +85,7 @@ const liveInward = (label) => ({
     ...base, state: 'live', direction: 'inward', stop: { name: 'Kings Cross Station', letter: 'E', towards: null }, arrivals: buses, fetched_label: label,
 });
 const outside = { ...base, state: 'outside_window', next_window_label: 'Next check 14:30' };
+const asleep = { ...outside, next_window: '2026-10-02T14:30:00+01:00' };
 
 test('inside a window it lists buses, hides the button and keeps polling', async () => {
     const page = boot();
@@ -125,6 +126,55 @@ test('a Check now result stays on screen through later outside-window polls', as
     assert.equal(page.els.list.hidden, false);
     assert.equal(page.els.foot.text, 'Checked 10:02');
     assert.equal(page.els.check.text, 'Check again');
+});
+
+test('outside a window it stops polling until the next window starts', async () => {
+    const page = boot();
+    page.now = Date.parse('2026-10-02T10:00:00+01:00');
+    await page.respond(asleep);
+
+    page.poll();
+    page.now = Date.parse('2026-10-02T14:29:50+01:00');
+    page.poll();
+    assert.equal(page.calls.length, 1);
+
+    page.now = Date.parse('2026-10-02T14:30:00+01:00');
+    page.poll();
+    assert.equal(page.calls.length, 2);
+    assert.equal(page.calls[1].url, '/r1/token/arrivals?direction=outward');
+    await page.respond(live('14:30'));
+
+    assert.equal(page.els.check.hidden, true);
+    assert.equal(page.els.count.text, '20s');
+    page.poll();
+    assert.equal(page.calls.length, 3);
+});
+
+test('Check now still works while polling is stopped and does not restart it', async () => {
+    const page = boot();
+    page.now = Date.parse('2026-10-02T10:00:00+01:00');
+    await page.respond(asleep);
+
+    page.els.check.listeners.click();
+    assert.equal(page.calls.at(-1).url, '/r1/token/arrivals?direction=outward&check=1');
+    await page.respond(live('10:00'));
+    assert.equal(page.els.foot.text, 'Checked 10:00');
+
+    page.poll();
+    assert.equal(page.calls.length, 2);
+});
+
+test('polling stops when a window ends', async () => {
+    const page = boot();
+    page.now = Date.parse('2026-10-02T08:59:50+01:00');
+    await page.respond(live('08:59'));
+
+    page.now = Date.parse('2026-10-02T09:00:10+01:00');
+    page.poll();
+    await page.respond(asleep);
+    page.poll();
+
+    assert.equal(page.calls.length, 2);
 });
 
 test('the side button flips direction inside a window and checks outside one', async () => {
