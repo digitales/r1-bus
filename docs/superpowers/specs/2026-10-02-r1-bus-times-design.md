@@ -108,6 +108,9 @@ For `outside_window`, `arrivals` is empty and `next_window` holds the next
 start time, unless `check=1` was sent, in which case arrivals for the upcoming
 slot are returned with `state: "live"`.
 
+The `*_label` fields are formatted on the server in London time, so the screen
+is right even if the R1 clock or timezone is not.
+
 ## Behaviour
 
 ### Inside a window
