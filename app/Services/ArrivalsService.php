@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\Direction;
 use App\Enums\Slot;
 use App\Exceptions\TflUnavailable;
 use App\Models\StopSchedule;
@@ -13,9 +14,12 @@ final class ArrivalsService
 {
     public function __construct(private TflClient $tfl) {}
 
-    public function forSlot(Slot $slot): ?ArrivalsResult
+    public function forSlot(Slot $slot, Direction $direction = Direction::Outward): ?ArrivalsResult
     {
-        $stop = StopSchedule::query()->where('slot', $slot->value)->first();
+        $stop = StopSchedule::query()
+            ->where('slot', $slot->value)
+            ->where('direction', $direction->value)
+            ->first();
 
         if ($stop === null) {
             return null;

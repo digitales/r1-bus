@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\Direction;
 use App\Exceptions\TflUnavailable;
 use App\Services\ArrivalsResult;
 use App\Services\ArrivalsService;
@@ -31,15 +32,16 @@ class DeviceController extends Controller
         }
 
         $slot ??= $windows->upcoming($now);
+        $direction = Direction::tryFrom((string) $request->query('direction')) ?? Direction::Outward;
 
         try {
-            $result = $arrivals->forSlot($slot);
+            $result = $arrivals->forSlot($slot, $direction);
         } catch (TflUnavailable) {
-            return response()->json($this->payload('unavailable'));
+            return response()->json($this->payload('unavailable', ['direction' => $direction->value]));
         }
 
         if ($result === null) {
-            return response()->json($this->payload('no_stop'));
+            return response()->json($this->payload('no_stop', ['direction' => $direction->value]));
         }
 
         return response()->json($this->live($now, $result));
@@ -50,6 +52,7 @@ class DeviceController extends Controller
         $fetchedAt = $result->fetchedAt->setTimezone(config('bus.timezone'));
 
         return $this->payload('live', [
+            'direction' => $result->stop->direction->value,
             'stop' => [
                 'name' => $result->stop->name,
                 'letter' => $result->stop->stop_letter,
@@ -81,6 +84,7 @@ class DeviceController extends Controller
     {
         return array_merge([
             'state' => $state,
+            'direction' => null,
             'stop' => null,
             'arrivals' => [],
             'fetched_at' => null,

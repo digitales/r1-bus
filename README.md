@@ -1,68 +1,107 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# R1 bus times
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+Live TfL bus arrivals on a Rabbit R1, for the stops you wait at on the way out and the way back.
 
-## About Laravel
+The R1 loads one small web page, 240 by 282 pixels, served by this Laravel app. The page asks the app for arrivals every 20 seconds. The app asks TfL, caches the answer, and sends back the next buses for the right stop.
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+## How it behaves
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+There are two periods on weekdays. Morning runs 06:30 to 09:00 and afternoon runs 14:30 to 15:30, London time. Each period has an outward stop and an inward stop, so four stops in total. You can leave any of them unset.
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+Inside a period the R1 shows the outward stop first.
 
-## Learning Laravel
+- Tap the header or press the side button to flip between outward and inward.
+- Turn the scroll wheel to move through the list.
+- The line under the stop name says which direction is showing, for example "Outward, towards Blackheath".
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+Outside a period the R1 shows when the next one starts and does not call TfL.
 
-In addition, [Laracasts](https://laracasts.com) contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+- Press "Check now" or the side button to fetch the upcoming period's buses once.
+- Tap the header to check the other direction.
 
-You can also watch bite-sized lessons with real-world projects on [Laravel Learn](https://laravel.com/learn), where you will be guided through building a Laravel application from scratch while learning PHP fundamentals.
+When a period ends, the screen goes back to outward.
 
-## Agentic Development
+If TfL stops answering, the app serves the last good result for up to 15 minutes and the footer says how old it is. If the R1 loses its connection for a minute, the bus times come off the screen. Old bus times are worse than none.
 
-Laravel's predictable structure and conventions make it ideal for AI coding agents like Claude Code, Cursor, and GitHub Copilot. Install [Laravel Boost](https://laravel.com/docs/ai) to supercharge your AI workflow:
+## Run it locally
 
-```bash
-composer require laravel/boost --dev
+You need PHP 8.3 or newer and Composer. Node is only needed for the page script tests.
 
-php artisan boost:install
+```sh
+composer install
+cp .env.example .env
+php artisan key:generate
+php artisan migrate
+php artisan bus:make-admin you@example.com
+php artisan serve
 ```
 
-Boost provides your agent 15+ tools and skills that help agents build Laravel applications while following best practices.
+Then open `http://localhost:8000/login`, sign in, and search for a stop in each Outward and Inward box. TfL lists every stop at a place with its letter and where it heads, so pick the one on your side of the road.
 
-## Contributing
+`TFL_APP_KEY` in `.env` is optional locally. TfL rate limits requests without a key, so set one in production. Keys are free from the [TfL API portal](https://api-portal.tfl.gov.uk/).
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+## Get it on the R1
 
-## Code of Conduct
+The R1 installs a creation by scanning a QR code that points at a URL. The R1 has to reach that URL over the internet, so `localhost` will not work.
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+### 1. Put the app on a public HTTPS address
 
-## Security Vulnerabilities
+Deploy it to any host that runs Laravel. On the server:
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+```sh
+php artisan migrate --force
+php artisan bus:make-admin you@example.com
+```
 
-## License
+Set `APP_URL` to the public address and set `TFL_APP_KEY`. The app needs no scheduler and no queue worker.
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+If the host has no terminal to prompt on, pass the password inline with `--password='...'`. It will show in that runner's command history, so prefer the prompt when you have one.
 
-## Running it
+To try it before deploying, tunnel the local server with `cloudflared tunnel --url http://localhost:8000` or `ngrok http 8000`. The R1 only works while the tunnel is up.
 
-- Tests: `./vendor/bin/pest` for PHP, `npm test` for the R1 page script (Node only, no install needed).
-- Local: `php artisan migrate && php artisan bus:make-admin you@example.com && php artisan serve`
-- Admin: `/login`, then set the morning and afternoon stops.
-- R1: the link is shown on the admin page. Regenerating it disables the old one.
-- Windows and weekdays live in `config/bus.php`.
-- `TFL_APP_KEY` is optional locally and should be set in production.
-- Where there is no terminal to prompt on (a hosted command runner), pass the password inline: `php artisan bus:make-admin you@example.com --password='...'`. It will show in that runner's command history, so prefer the prompt when you have one.
+### 2. Copy the R1 link
+
+Sign in at `/login` on the public address and set your stops. The "R1 link" card at the bottom of the admin page shows a URL like `https://your-host/r1/<token>`. Copy it.
+
+### 3. Make the QR code
+
+Rabbit publishes a QR generator in the [creations SDK](https://github.com/rabbit-hmi-oss/creations-sdk). Clone the repo and open `qr/final/index_fixed.html` in a browser. Fill in the form:
+
+| Field | Value |
+| --- | --- |
+| Title | Bus times |
+| URL | the R1 link from step 2 |
+| Description | anything you like |
+| Icon URL | optional, any public image |
+| Theme color | `#ff6b00` matches the page |
+
+The QR code holds those five fields as JSON. Nothing else is involved.
+
+### 4. Scan it
+
+Point the R1 camera at the QR code. The creation appears on the device. Open it and the bus times load.
+
+### Keep the link private
+
+The token in the R1 link is the only thing protecting the page. Anyone with the link or the QR code can see your bus times. If it leaks, press "Regenerate" on the admin page. The old link stops working at once, so make a new QR code and scan it again.
+
+## Change the times
+
+Periods, weekdays and limits live in `config/bus.php`.
+
+| Setting | Default |
+| --- | --- |
+| `windows` | morning 06:30 to 09:00, afternoon 14:30 to 15:30 |
+| `weekdays` | Monday to Friday |
+| `cache_seconds` | 20, also how often the R1 polls |
+| `stale_minutes` | 15 |
+| `max_arrivals` | 10 |
+
+## Tests
+
+```sh
+./vendor/bin/pest   # the Laravel app
+npm test            # the R1 page script, Node only, no install needed
+```
+
+Run both. The page script tests load the script out of `resources/views/r1.blade.php` and run it against a fake DOM, so a change to the R1 screen can break them while Pest stays green.

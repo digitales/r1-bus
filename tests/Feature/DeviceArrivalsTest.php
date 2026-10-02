@@ -1,14 +1,16 @@
 <?php
 
+use App\Enums\Direction;
 use App\Enums\Slot;
 use App\Models\StopSchedule;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Http;
 
-function saveStop(Slot $slot, string $naptanId, string $name): StopSchedule
+function saveStop(Slot $slot, string $naptanId, string $name, Direction $direction = Direction::Outward): StopSchedule
 {
     return StopSchedule::create([
         'slot' => $slot,
+        'direction' => $direction,
         'naptan_id' => $naptanId,
         'name' => $name,
         'stop_letter' => 'F',
@@ -38,6 +40,7 @@ it('returns live arrivals for the morning stop inside the morning window', funct
         ->assertOk()
         ->assertExactJson([
             'state' => 'live',
+            'direction' => 'outward',
             'stop' => ['name' => 'Angel Station', 'letter' => 'F', 'towards' => 'Holborn'],
             'arrivals' => [
                 ['route' => '19', 'destination' => 'Battersea Bridge', 'minutes' => 3],
@@ -65,6 +68,55 @@ it('uses the afternoon stop inside the afternoon window', function () {
         ->assertJsonPath('arrivals', []);
 });
 
+it('shows the inward stop when asked for it', function () {
+    travelToLondon('2026-10-05 07:00:00');
+    saveStop(Slot::Morning, '490000007F', 'Angel Station');
+    saveStop(Slot::Morning, '490000129E', 'Kings Cross Station', Direction::Inward);
+    Http::fake(['api.tfl.gov.uk/StopPoint/490000129E/Arrivals*' => Http::response([])]);
+
+    $this->getJson(deviceUrl('/arrivals?direction=inward'))
+        ->assertOk()
+        ->assertJsonPath('state', 'live')
+        ->assertJsonPath('direction', 'inward')
+        ->assertJsonPath('stop.name', 'Kings Cross Station');
+});
+
+it('falls back to the outward stop for an unknown direction', function () {
+    travelToLondon('2026-10-05 07:00:00');
+    saveStop(Slot::Morning, '490000007F', 'Angel Station');
+    saveStop(Slot::Morning, '490000129E', 'Kings Cross Station', Direction::Inward);
+    Http::fake(['api.tfl.gov.uk/StopPoint/490000007F/Arrivals*' => Http::response([])]);
+
+    $this->getJson(deviceUrl('/arrivals?direction=sideways'))
+        ->assertJsonPath('direction', 'outward')
+        ->assertJsonPath('stop.name', 'Angel Station');
+});
+
+it('reports no_stop for a direction with no stop, naming the direction', function () {
+    travelToLondon('2026-10-05 07:00:00');
+    saveStop(Slot::Morning, '490000007F', 'Angel Station');
+    Http::fake();
+
+    $this->getJson(deviceUrl('/arrivals?direction=inward'))
+        ->assertOk()
+        ->assertJsonPath('state', 'no_stop')
+        ->assertJsonPath('direction', 'inward')
+        ->assertJsonPath('stop', null);
+
+    Http::assertNothingSent();
+});
+
+it('checks the requested direction of the upcoming slot outside a window', function () {
+    travelToLondon('2026-10-05 10:00:00');
+    saveStop(Slot::Afternoon, '490000007F', 'Angel Station');
+    saveStop(Slot::Afternoon, '490000129E', 'Kings Cross Station', Direction::Inward);
+    Http::fake(['api.tfl.gov.uk/StopPoint/490000129E/Arrivals*' => Http::response([])]);
+
+    $this->getJson(deviceUrl('/arrivals?check=1&direction=inward'))
+        ->assertJsonPath('state', 'live')
+        ->assertJsonPath('stop.name', 'Kings Cross Station');
+});
+
 it('does not call TfL outside a window and says when the next one starts', function () {
     travelToLondon('2026-10-05 10:00:00');
     saveStop(Slot::Afternoon, '490000129E', 'Kings Cross Station');
@@ -74,6 +126,7 @@ it('does not call TfL outside a window and says when the next one starts', funct
         ->assertOk()
         ->assertExactJson([
             'state' => 'outside_window',
+            'direction' => null,
             'stop' => null,
             'arrivals' => [],
             'fetched_at' => null,
@@ -141,6 +194,7 @@ it('reports unavailable when TfL fails with nothing cached', function () {
     $this->getJson(deviceUrl('/arrivals'))
         ->assertOk()
         ->assertJsonPath('state', 'unavailable')
+        ->assertJsonPath('direction', 'outward')
         ->assertJsonPath('arrivals', []);
 });
 

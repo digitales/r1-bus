@@ -1,11 +1,14 @@
 <?php
 
+use App\Enums\Direction;
 use App\Enums\Slot;
 use App\Livewire\StopScheduleEditor;
 use App\Models\StopSchedule;
 use App\Models\User;
 use App\Services\DeviceToken;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Http;
+use Livewire\Features\SupportTesting\Testable;
 use Livewire\Livewire;
 
 function tflStop(string $id, string $name, ?string $letter, ?string $towards, array $children = []): array
@@ -20,6 +23,40 @@ function tflStop(string $id, string $name, ?string $letter, ?string $towards, ar
     ];
 }
 
+function fakeVictoria(): void
+{
+    Http::fake([
+        'api.tfl.gov.uk/StopPoint/Search/*' => Http::response(['matches' => [
+            ['id' => 'HUBVIC', 'name' => 'Victoria'],
+            ['id' => '490000248G', 'name' => 'Victoria Station', 'towards' => 'Battersea'],
+        ]]),
+        'api.tfl.gov.uk/StopPoint/HUBVIC,490000248G*' => Http::response([
+            [
+                'naptanId' => 'HUBVIC',
+                'commonName' => 'Victoria',
+                'stopType' => 'TransportInterchange',
+                'children' => [
+                    tflStop('490014050A', 'Victoria Bus Station', 'A', 'Green Park'),
+                    tflStop('490014050B', 'Victoria Bus Station', 'B', 'Pimlico'),
+                ],
+            ],
+            tflStop('490000248G', 'Victoria Station', 'G', 'Battersea'),
+        ]),
+    ]);
+}
+
+/**
+ * Search one direction of the slot for "victoria" (three stops across two places).
+ */
+function searchVictoria(string $slot = 'morning', string $direction = 'outward'): Testable
+{
+    fakeVictoria();
+
+    return Livewire::test(StopScheduleEditor::class)
+        ->set("query.{$slot}.{$direction}", 'victoria')
+        ->call('search', $slot, $direction);
+}
+
 beforeEach(function () {
     $this->actingAs(User::factory()->create());
 });
@@ -30,124 +67,151 @@ it('renders on the admin page with both cards and the R1 link', function () {
     $this->get('/admin')
         ->assertOk()
         ->assertSeeLivewire(StopScheduleEditor::class)
-        ->assertSee('Morning stop')
-        ->assertSee('Afternoon stop')
-        ->assertSee('No stop set')
+        ->assertSeeInOrder(['Morning stops', 'Outward', 'No stop set', 'Inward', 'No stop set'])
+        ->assertSeeInOrder(['Afternoon stops', 'Outward', 'No stop set', 'Inward', 'No stop set'])
         ->assertSee(route('r1.show', ['token' => $token]));
 });
 
-it('searches and lists places for one slot only', function () {
-    Http::fake(['api.tfl.gov.uk/StopPoint/Search/*' => Http::response(['matches' => [
-        ['id' => 'HUBVIC', 'name' => 'Victoria'],
-        ['id' => '490000248G', 'name' => 'Victoria Station', 'towards' => 'Battersea'],
-    ]])]);
-
-    Livewire::test(StopScheduleEditor::class)
-        ->set('query.morning', 'victoria')
-        ->call('search', 'morning')
-        ->assertSet('places.morning', [
-            ['id' => 'HUBVIC', 'name' => 'Victoria', 'towards' => null],
-            ['id' => '490000248G', 'name' => 'Victoria Station', 'towards' => 'Battersea'],
+it('lists every stop with its letter and destination for one direction of one slot only', function () {
+    searchVictoria()
+        ->assertSet('stops.morning.outward', [
+            ['naptan_id' => '490014050A', 'name' => 'Victoria Bus Station', 'stop_letter' => 'A', 'towards' => 'Green Park'],
+            ['naptan_id' => '490014050B', 'name' => 'Victoria Bus Station', 'stop_letter' => 'B', 'towards' => 'Pimlico'],
+            ['naptan_id' => '490000248G', 'name' => 'Victoria Station', 'stop_letter' => 'G', 'towards' => 'Battersea'],
         ])
-        ->assertSet('places.afternoon', [])
-        ->assertSee('towards Battersea');
+        ->assertSet('stops.morning.inward', [])
+        ->assertSet('stops.afternoon.outward', [])
+        ->assertSeeInOrder(['Victoria Bus Station', 'Stop A', 'towards Green Park'])
+        ->assertSeeInOrder(['Victoria Station', 'Stop G', 'towards Battersea']);
 });
 
 it('says so when a search finds nothing', function () {
     Http::fake(['api.tfl.gov.uk/*' => Http::response(['matches' => []])]);
 
     Livewire::test(StopScheduleEditor::class)
-        ->set('query.morning', 'zzzz')
-        ->call('search', 'morning')
-        ->assertSet('problem.morning', 'No stops found for that name.');
+        ->set('query.morning.outward', 'zzzz')
+        ->call('search', 'morning', 'outward')
+        ->assertSet('problem.morning.outward', 'No stops found for "zzzz". Check the spelling or try a nearby landmark.');
 });
 
-it('saves straight away when the place is a single stop', function () {
-    Http::fake(['api.tfl.gov.uk/StopPoint/490000007F*' => Http::response(
-        tflStop('490000007F', 'Angel Station', 'F', 'Holborn')
-    )]);
+it('asks for a name instead of calling TfL when the search is blank', function () {
+    Http::fake();
 
     Livewire::test(StopScheduleEditor::class)
-        ->call('choosePlace', 'morning', '490000007F')
-        ->assertSet('stops.morning', [])
-        ->assertSee('Angel Station')
-        ->assertSee('Stop F');
+        ->set('query.morning.outward', '   ')
+        ->call('search', 'morning', 'outward')
+        ->assertSet('problem.morning.outward', 'Type a stop name to search.');
 
-    $saved = StopSchedule::sole();
-    expect($saved->slot)->toBe(Slot::Morning)
-        ->and($saved->only(['naptan_id', 'name', 'stop_letter', 'towards']))->toBe([
-            'naptan_id' => '490000007F',
-            'name' => 'Angel Station',
-            'stop_letter' => 'F',
-            'towards' => 'Holborn',
-        ]);
+    Http::assertNothingSent();
 });
 
-it('asks which stop when a hub holds several, then saves the chosen one', function () {
-    Http::fake(['api.tfl.gov.uk/StopPoint/HUBVIC*' => Http::response([
-        'naptanId' => 'HUBVIC',
-        'commonName' => 'Victoria',
-        'stopType' => 'TransportInterchange',
-        'children' => [
-            tflStop('490014050A', 'Victoria Bus Station', 'A', 'Green Park'),
-            tflStop('490014050B', 'Victoria Bus Station', 'B', 'Pimlico'),
-        ],
-    ])]);
+it('says how many stops matched the search', function () {
+    fakeVictoria();
 
-    $component = Livewire::test(StopScheduleEditor::class)
-        ->call('choosePlace', 'afternoon', 'HUBVIC')
-        ->assertCount('stops.afternoon', 2)
-        ->assertSee('towards Pimlico');
+    Livewire::test(StopScheduleEditor::class)
+        ->set('query.morning.outward', ' victoria ')
+        ->call('search', 'morning', 'outward')
+        ->assertSee('Found 3 stops for "victoria". Pick the one you wait at:', false);
+});
+
+it('says so when the matching places have no bus stops', function () {
+    Http::fake([
+        'api.tfl.gov.uk/StopPoint/Search/*' => Http::response(['matches' => [['id' => '940GZZLUVIC', 'name' => 'Victoria Underground']]]),
+        'api.tfl.gov.uk/StopPoint/940GZZLUVIC*' => Http::response(['naptanId' => '940GZZLUVIC', 'commonName' => 'Victoria Underground', 'stopType' => 'NaptanMetroStation']),
+    ]);
+
+    Livewire::test(StopScheduleEditor::class)
+        ->set('query.morning.outward', 'victoria underground')
+        ->call('search', 'morning', 'outward')
+        ->assertSet('problem.morning.outward', 'No stops found for "victoria underground". Check the spelling or try a nearby landmark.');
+});
+
+it('clears a search without saving anything', function () {
+    searchVictoria()
+        ->call('cancel', 'morning', 'outward')
+        ->assertSet('query.morning.outward', '')
+        ->assertSet('stops.morning.outward', [])
+        ->assertDontSee('Pick');
+
+    expect(StopSchedule::count())->toBe(0);
+});
+
+it('confirms the stop it saved until the next search', function () {
+    searchVictoria('afternoon')
+        ->call('chooseStop', 'afternoon', 'outward', '490014050B')
+        ->assertSet('notice.afternoon.outward', 'Saved Victoria Bus Station, Stop B.')
+        ->assertSet('notice.afternoon.inward', null)
+        ->assertSet('notice.morning.outward', null)
+        ->assertSee('Saved Victoria Bus Station, Stop B.')
+        ->set('query.afternoon.outward', 'victoria')
+        ->call('search', 'afternoon', 'outward')
+        ->assertSet('notice.afternoon.outward', null);
+});
+
+it('marks the search and the choices as busy while TfL is being asked', function () {
+    searchVictoria()
+        ->assertSeeHtml('wire:loading wire:target="search(\'morning\', \'outward\')"')
+        ->assertSeeHtml('wire:loading.class="busy"')
+        ->assertSee('Searching…');
+});
+
+it('saves only the stop that was chosen, with its letter and direction', function () {
+    $component = searchVictoria('afternoon');
 
     expect(StopSchedule::count())->toBe(0);
 
-    $component->call('chooseStop', 'afternoon', '490014050B')
-        ->assertSet('stops.afternoon', [])
-        ->assertSet('places.afternoon', []);
+    $component->call('chooseStop', 'afternoon', 'outward', '490014050B')
+        ->assertSet('stops.afternoon.outward', []);
 
-    expect(StopSchedule::sole()->only(['naptan_id', 'stop_letter']))
-        ->toBe(['naptan_id' => '490014050B', 'stop_letter' => 'B'])
-        ->and(StopSchedule::sole()->slot)->toBe(Slot::Afternoon);
+    $saved = StopSchedule::sole();
+    expect($saved->slot)->toBe(Slot::Afternoon)
+        ->and($saved->direction)->toBe(Direction::Outward)
+        ->and($saved->only(['naptan_id', 'name', 'stop_letter', 'towards']))->toBe([
+            'naptan_id' => '490014050B',
+            'name' => 'Victoria Bus Station',
+            'stop_letter' => 'B',
+            'towards' => 'Pimlico',
+        ]);
 });
 
 it('replaces the existing stop for a slot instead of adding another', function () {
     StopSchedule::create(['slot' => Slot::Morning, 'naptan_id' => 'OLD', 'name' => 'Old Stop']);
-    Http::fake(['api.tfl.gov.uk/StopPoint/490000007F*' => Http::response(
-        tflStop('490000007F', 'Angel Station', 'F', 'Holborn')
-    )]);
 
-    Livewire::test(StopScheduleEditor::class)->call('choosePlace', 'morning', '490000007F');
+    searchVictoria()->call('chooseStop', 'morning', 'outward', '490000248G');
 
     expect(StopSchedule::count())->toBe(1)
-        ->and(StopSchedule::sole()->naptan_id)->toBe('490000007F');
+        ->and(StopSchedule::sole()->naptan_id)->toBe('490000248G');
 });
 
-it('reports a place with no bus stops', function () {
-    Http::fake(['api.tfl.gov.uk/*' => Http::response([
-        'naptanId' => '490G000700',
-        'commonName' => 'Somewhere',
-        'stopType' => 'NaptanOnstreetBusCoachStopPair',
-        'children' => [],
-    ])]);
+it('saves the inward stop without touching the outward one', function () {
+    StopSchedule::create(['slot' => Slot::Morning, 'naptan_id' => 'OUT', 'name' => 'Outward Stop']);
 
-    Livewire::test(StopScheduleEditor::class)
-        ->call('choosePlace', 'morning', '490G000700')
-        ->assertSet('problem.morning', 'No bus stops found at that place.');
+    searchVictoria('morning', 'inward')
+        ->assertSet('stops.morning.outward', [])
+        ->call('chooseStop', 'morning', 'inward', '490000248G')
+        ->assertSet('notice.morning.inward', 'Saved Victoria Station, Stop G.')
+        ->assertSet('notice.morning.outward', null)
+        ->assertSeeInOrder(['Outward', 'Outward Stop', 'Inward', 'Victoria Station']);
 
-    expect(StopSchedule::count())->toBe(0);
+    expect(StopSchedule::count())->toBe(2)
+        ->and(StopSchedule::where('direction', Direction::Outward)->sole()->naptan_id)->toBe('OUT')
+        ->and(StopSchedule::where('direction', Direction::Inward)->sole()->naptan_id)->toBe('490000248G');
 });
 
-it('ignores a stop id that was not offered and an unknown slot', function () {
-    Http::fake();
+it('ignores a stop id that was not offered, an unknown slot and an unknown direction', function () {
+    fakeVictoria();
 
-    Livewire::test(StopScheduleEditor::class)
-        ->call('chooseStop', 'morning', '490000007F')
-        ->call('chooseStop', 'evening', '490000007F')
-        ->call('search', 'evening')
-        ->call('choosePlace', 'evening', 'HUBVIC');
+    searchVictoria()
+        ->call('chooseStop', 'morning', 'outward', '490000007F')
+        ->call('chooseStop', 'evening', 'outward', '490014050A')
+        ->call('chooseStop', 'morning', 'sideways', '490014050A')
+        ->call('search', 'evening', 'outward')
+        ->call('search', 'morning', 'sideways')
+        ->call('cancel', 'morning', 'sideways')
+        ->assertCount('stops.morning.outward', 3);
 
     expect(StopSchedule::count())->toBe(0);
-    Http::assertNothingSent();
+    Http::assertSentCount(2);
 });
 
 it('shows an error and keeps the saved stop when TfL is down', function () {
@@ -155,9 +219,9 @@ it('shows an error and keeps the saved stop when TfL is down', function () {
     Http::fake(['api.tfl.gov.uk/*' => Http::response('Bad gateway', 502)]);
 
     Livewire::test(StopScheduleEditor::class)
-        ->set('query.morning', 'angel')
-        ->call('search', 'morning')
-        ->assertSet('problem.morning', 'TfL is not answering. Try again in a moment.')
+        ->set('query.morning.outward', 'angel')
+        ->call('search', 'morning', 'outward')
+        ->assertSet('problem.morning.outward', 'TfL is not answering. Try again in a moment.')
         ->assertSee('Angel Station');
 
     expect(StopSchedule::sole()->naptan_id)->toBe('490000007F');
@@ -175,15 +239,19 @@ it('regenerates the R1 link', function () {
 });
 
 it('uses the new stop on the next device request', function () {
-    $this->travelTo(Carbon\CarbonImmutable::parse('2026-10-05 07:00:00', 'Europe/London'));
+    $this->travelTo(CarbonImmutable::parse('2026-10-05 07:00:00', 'Europe/London'));
     Http::fake([
         'api.tfl.gov.uk/StopPoint/490000007F/Arrivals*' => Http::response([]),
+        'api.tfl.gov.uk/StopPoint/Search/*' => Http::response(['matches' => [['id' => '490000007F', 'name' => 'Angel Station']]]),
         'api.tfl.gov.uk/StopPoint/490000007F*' => Http::response(tflStop('490000007F', 'Angel Station', 'F', 'Holborn')),
     ]);
 
     $this->getJson(deviceUrl('/arrivals'))->assertJsonPath('state', 'no_stop');
 
-    Livewire::test(StopScheduleEditor::class)->call('choosePlace', 'morning', '490000007F');
+    Livewire::test(StopScheduleEditor::class)
+        ->set('query.morning.outward', 'angel')
+        ->call('search', 'morning', 'outward')
+        ->call('chooseStop', 'morning', 'outward', '490000007F');
 
     $this->getJson(deviceUrl('/arrivals'))
         ->assertJsonPath('state', 'live')

@@ -20,19 +20,54 @@ function busStopNode(string $id, string $name, ?string $letter, ?string $towards
     ];
 }
 
-it('searches bus stops by name', function () {
-    Http::fake(['api.tfl.gov.uk/StopPoint/Search/*' => Http::response(['matches' => [
-        ['id' => 'HUBVIC', 'name' => 'Victoria'],
-        ['id' => '490000248G', 'name' => 'Victoria Station', 'towards' => 'Battersea'],
-    ]])]);
-
-    expect((new TflClient)->searchStops(' victoria '))->toBe([
-        ['id' => 'HUBVIC', 'name' => 'Victoria', 'towards' => null],
-        ['id' => '490000248G', 'name' => 'Victoria Station', 'towards' => 'Battersea'],
+it('searches by name and lists every bus stop with its letter and direction', function () {
+    Http::fake([
+        'api.tfl.gov.uk/StopPoint/Search/*' => Http::response(['matches' => [
+            ['id' => '490G00011232', 'name' => 'Priory Park'],
+            ['id' => '490G00011233', 'name' => 'Priory Park'],
+        ]]),
+        'api.tfl.gov.uk/StopPoint/490G00011232,490G00011233*' => Http::response([
+            ['naptanId' => '490G00011232', 'commonName' => 'Priory Park', 'stopType' => 'NaptanOnstreetBusCoachStopPair', 'children' => [
+                busStopNode('490011232S', 'Priory Park', 'N', 'Finsbury Park'),
+            ]],
+            ['naptanId' => '490G00011233', 'commonName' => 'Priory Park', 'stopType' => 'NaptanOnstreetBusCoachStopPair', 'children' => [
+                busStopNode('490011233N', 'Priory Park', 'R', 'Blackheath'),
+                busStopNode('490011233S', 'Priory Park', 'D', 'Catford'),
+            ]],
+        ]),
     ]);
 
-    Http::assertSent(fn (Request $request) => str_contains($request->url(), '/StopPoint/Search/victoria?')
+    expect((new TflClient)->searchStops(' priory park '))->toBe([
+        ['naptan_id' => '490011232S', 'name' => 'Priory Park', 'stop_letter' => 'N', 'towards' => 'Finsbury Park'],
+        ['naptan_id' => '490011233N', 'name' => 'Priory Park', 'stop_letter' => 'R', 'towards' => 'Blackheath'],
+        ['naptan_id' => '490011233S', 'name' => 'Priory Park', 'stop_letter' => 'D', 'towards' => 'Catford'],
+    ]);
+
+    Http::assertSent(fn (Request $request) => str_contains($request->url(), '/StopPoint/Search/priory%20park?')
         && $request['modes'] === 'bus');
+    Http::assertSentCount(2);
+});
+
+it('makes no second call when the search matches nothing', function () {
+    Http::fake(['api.tfl.gov.uk/StopPoint/Search/*' => Http::response(['matches' => []])]);
+
+    expect((new TflClient)->searchStops('zzzz'))->toBe([]);
+
+    Http::assertSentCount(1);
+});
+
+it('lists the stops for several places in one call', function () {
+    Http::fake(['api.tfl.gov.uk/StopPoint/490000007F,490000248G*' => Http::response([
+        busStopNode('490000007F', 'Angel Station', 'F', 'Holborn'),
+        busStopNode('490000248G', 'Victoria Station', 'G', 'Battersea'),
+    ])]);
+
+    expect((new TflClient)->stopsAt('490000007F', '490000248G'))->toBe([
+        ['naptan_id' => '490000007F', 'name' => 'Angel Station', 'stop_letter' => 'F', 'towards' => 'Holborn'],
+        ['naptan_id' => '490000248G', 'name' => 'Victoria Station', 'stop_letter' => 'G', 'towards' => 'Battersea'],
+    ]);
+
+    Http::assertSentCount(1);
 });
 
 it('returns nothing for a blank search without calling TfL', function () {

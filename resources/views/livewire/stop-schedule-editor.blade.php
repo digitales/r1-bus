@@ -2,55 +2,63 @@
     @foreach ($cases as $case)
         @php($key = $case->value)
         <section class="card" wire:key="card-{{ $key }}">
-            <h2>{{ $case->label() }} stop</h2>
+            <h2>{{ $case->label() }} stops</h2>
 
-            <p class="current">
-                @if ($saved->has($key))
-                    {{ $saved[$key]->name }}@if ($saved[$key]->stop_letter), Stop {{ $saved[$key]->stop_letter }}@endif
-                    @if ($saved[$key]->towards)
-                        <span class="muted">towards {{ $saved[$key]->towards }}</span>
+            @foreach ($directions as $direction)
+                @php($dir = $direction->value)
+                @php($current = $saved[$key][$dir] ?? null)
+                <div class="direction" wire:key="direction-{{ $key }}-{{ $dir }}">
+                    <h3>{{ $direction->label() }}</h3>
+
+                    <p class="current">
+                        @if ($current)
+                            {{ $current->name }}@if ($current->stop_letter), Stop {{ $current->stop_letter }}@endif
+                            @if ($current->towards)
+                                <span class="muted">towards {{ $current->towards }}</span>
+                            @endif
+                        @else
+                            <span class="muted">No stop set</span>
+                        @endif
+                    </p>
+
+                    <form wire:submit="search('{{ $key }}', '{{ $dir }}')" class="row">
+                        <input type="search" wire:model="query.{{ $key }}.{{ $dir }}" placeholder="Search stop name" aria-label="Search {{ $key }} {{ $dir }} stop">
+                        <button type="submit">
+                            <span wire:loading.remove wire:target="search('{{ $key }}', '{{ $dir }}')">Search</span>
+                            <span wire:loading wire:target="search('{{ $key }}', '{{ $dir }}')">Searching…</span>
+                        </button>
+                    </form>
+
+                    @if ($problem[$key][$dir])
+                        <p class="error" role="alert">{{ $problem[$key][$dir] }}</p>
                     @endif
-                @else
-                    <span class="muted">No stop set</span>
-                @endif
-            </p>
 
-            <form wire:submit="search('{{ $key }}')" class="row">
-                <input type="search" wire:model="query.{{ $key }}" placeholder="Search stop name" aria-label="Search {{ $key }} stop">
-                <button type="submit">Search</button>
-            </form>
+                    @if ($notice[$key][$dir])
+                        <p class="notice" role="status">{{ $notice[$key][$dir] }}</p>
+                    @endif
 
-            @if ($problem[$key])
-                <p class="error">{{ $problem[$key] }}</p>
-            @endif
-
-            @if ($stops[$key])
-                <ul class="choices">
-                    @foreach ($stops[$key] as $stop)
-                        <li wire:key="stop-{{ $key }}-{{ $stop['naptan_id'] }}">
-                            <button type="button" wire:click="chooseStop('{{ $key }}', @js($stop['naptan_id']))">
-                                {{ $stop['name'] }}@if ($stop['stop_letter']), Stop {{ $stop['stop_letter'] }}@endif
-                                @if ($stop['towards'])
-                                    <span class="muted">towards {{ $stop['towards'] }}</span>
-                                @endif
-                            </button>
-                        </li>
-                    @endforeach
-                </ul>
-            @elseif ($places[$key])
-                <ul class="choices">
-                    @foreach ($places[$key] as $place)
-                        <li wire:key="place-{{ $key }}-{{ $place['id'] }}">
-                            <button type="button" wire:click="choosePlace('{{ $key }}', @js($place['id']))">
-                                {{ $place['name'] }}
-                                @if ($place['towards'])
-                                    <span class="muted">towards {{ $place['towards'] }}</span>
-                                @endif
-                            </button>
-                        </li>
-                    @endforeach
-                </ul>
-            @endif
+                    @if ($stops[$key][$dir])
+                        <p class="hint" role="status">
+                            Found {{ count($stops[$key][$dir]) }} {{ Str::plural('stop', count($stops[$key][$dir])) }} for "{{ $searched[$key][$dir] }}". Pick the one you wait at:
+                        </p>
+                        <ul class="choices" wire:loading.class="busy" wire:target="chooseStop">
+                            @foreach ($stops[$key][$dir] as $stop)
+                                <li wire:key="stop-{{ $key }}-{{ $dir }}-{{ $stop['naptan_id'] }}">
+                                    <button type="button" wire:click="chooseStop('{{ $key }}', '{{ $dir }}', @js($stop['naptan_id']))">
+                                        {{ $stop['name'] }}@if ($stop['stop_letter']), <strong>Stop {{ $stop['stop_letter'] }}</strong>@endif
+                                        @if ($stop['towards'])
+                                            <span class="muted">towards {{ $stop['towards'] }}</span>
+                                        @endif
+                                    </button>
+                                </li>
+                            @endforeach
+                        </ul>
+                        <p class="actions">
+                            <button type="button" class="plain" wire:click="cancel('{{ $key }}', '{{ $dir }}')">Clear</button>
+                        </p>
+                    @endif
+                </div>
+            @endforeach
         </section>
     @endforeach
 

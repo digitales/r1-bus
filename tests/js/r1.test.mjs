@@ -30,7 +30,7 @@ const flush = () => new Promise((resolve) => setImmediate(resolve));
 
 function boot() {
     const els = {};
-    for (const id of ['stop', 'towards', 'list', 'msg', 'check', 'foot']) { els[id] = new El(); }
+    for (const id of ['head', 'stop', 'towards', 'list', 'msg', 'check', 'foot']) { els[id] = new El(); }
     els.list.hidden = true;
     els.check.hidden = true;
 
@@ -71,8 +71,12 @@ function boot() {
 }
 
 const base = { stop: null, arrivals: [], fetched_at: null, fetched_label: null, stale: false, stale_minutes: 0, next_window: null, next_window_label: null };
-const live = (label, arrivals = [{ route: '73', destination: 'Stoke Newington', minutes: 3 }, { route: '19', destination: 'Battersea', minutes: 0 }]) => ({
-    ...base, state: 'live', stop: { name: 'Angel Station', letter: 'F', towards: 'Holborn' }, arrivals, fetched_label: label,
+const buses = [{ route: '73', destination: 'Stoke Newington', minutes: 3 }, { route: '19', destination: 'Battersea', minutes: 0 }];
+const live = (label, arrivals = buses) => ({
+    ...base, state: 'live', direction: 'outward', stop: { name: 'Angel Station', letter: 'F', towards: 'Holborn' }, arrivals, fetched_label: label,
+});
+const liveInward = (label) => ({
+    ...base, state: 'live', direction: 'inward', stop: { name: 'Kings Cross Station', letter: 'E', towards: null }, arrivals: buses, fetched_label: label,
 });
 const outside = { ...base, state: 'outside_window', next_window_label: 'Next check 14:30' };
 
@@ -81,7 +85,7 @@ test('inside a window it lists buses, hides the button and keeps polling', async
     await page.respond(live('07:41'));
 
     assert.equal(page.els.stop.text, 'Angel Station, Stop F');
-    assert.equal(page.els.towards.text, 'towards Holborn');
+    assert.equal(page.els.towards.text, 'Outward, towards Holborn');
     assert.deepEqual(page.rows(), ['73 | Stoke Newington | 3 min', '19 | Battersea | due']);
     assert.equal(page.els.list.hidden, false);
     assert.equal(page.els.check.hidden, true);
@@ -89,7 +93,7 @@ test('inside a window it lists buses, hides the button and keeps polling', async
 
     page.poll();
     assert.equal(page.calls.length, 2);
-    assert.equal(page.calls[1].url, '/r1/token/arrivals');
+    assert.equal(page.calls[1].url, '/r1/token/arrivals?direction=outward');
 });
 
 test('outside a window it shows the next window and a Check now button', async () => {
@@ -107,7 +111,7 @@ test('a Check now result stays on screen through later outside-window polls', as
     await page.respond(outside);
 
     page.els.check.listeners.click();
-    assert.equal(page.calls.at(-1).url, '/r1/token/arrivals?check=1');
+    assert.equal(page.calls.at(-1).url, '/r1/token/arrivals?direction=outward&check=1');
     await page.respond(live('10:02'));
     page.poll();
     await page.respond(outside);
@@ -117,16 +121,87 @@ test('a Check now result stays on screen through later outside-window polls', as
     assert.equal(page.els.check.text, 'Check again');
 });
 
-test('the side button refreshes inside a window and checks outside one', async () => {
+test('the side button flips direction inside a window and checks outside one', async () => {
     const inside = boot();
     await inside.respond(live('07:41'));
     inside.windowListeners.sideClick();
-    assert.equal(inside.calls.at(-1).url, '/r1/token/arrivals');
+    assert.equal(inside.calls.at(-1).url, '/r1/token/arrivals?direction=inward');
 
     const out = boot();
     await out.respond(outside);
     out.windowListeners.sideClick();
-    assert.equal(out.calls.at(-1).url, '/r1/token/arrivals?check=1');
+    assert.equal(out.calls.at(-1).url, '/r1/token/arrivals?direction=outward&check=1');
+});
+
+test('tapping the header shows the other direction and tapping again comes back', async () => {
+    const page = boot();
+    await page.respond(live('07:41'));
+
+    page.els.head.listeners.click();
+    assert.equal(page.els.towards.text, 'Inward');
+    assert.equal(page.calls.at(-1).url, '/r1/token/arrivals?direction=inward');
+    await page.respond(liveInward('07:41'));
+
+    assert.equal(page.els.stop.text, 'Kings Cross Station, Stop E');
+    assert.equal(page.els.towards.text, 'Inward');
+    assert.equal(page.els.check.hidden, true);
+
+    page.els.head.listeners.click();
+    assert.equal(page.calls.at(-1).url, '/r1/token/arrivals?direction=outward');
+    await page.respond(live('07:42'));
+    assert.equal(page.els.towards.text, 'Outward, towards Holborn');
+});
+
+test('tapping the header outside a window checks the other direction', async () => {
+    const page = boot();
+    await page.respond(outside);
+
+    page.els.head.listeners.click();
+    assert.equal(page.calls.at(-1).url, '/r1/token/arrivals?direction=inward&check=1');
+    await page.respond(liveInward('10:02'));
+
+    assert.equal(page.els.stop.text, 'Kings Cross Station, Stop E');
+    assert.equal(page.els.check.text, 'Check again');
+});
+
+test('a flip during a request ignores the old answer and asks again', async () => {
+    const page = boot();
+    await page.respond(live('07:41'));
+
+    page.poll();
+    page.els.head.listeners.click();
+    assert.equal(page.calls.length, 2);
+    await page.respond(live('07:42'));
+
+    assert.equal(page.els.towards.text, 'Inward');
+    assert.equal(page.calls.length, 3);
+    assert.equal(page.calls.at(-1).url, '/r1/token/arrivals?direction=inward');
+    await page.respond(liveInward('07:42'));
+    assert.equal(page.els.stop.text, 'Kings Cross Station, Stop E');
+});
+
+test('a direction with no stop says which one is missing', async () => {
+    const page = boot();
+    await page.respond(live('07:41'));
+
+    page.els.head.listeners.click();
+    await page.respond({ ...base, state: 'no_stop', direction: 'inward' });
+
+    assert.equal(page.els.msg.text, 'No inward stop. Use admin');
+    assert.equal(page.els.towards.text, 'Inward');
+});
+
+test('the next window starts on outward again', async () => {
+    const page = boot();
+    await page.respond(live('08:59'));
+    page.els.head.listeners.click();
+    await page.respond(liveInward('08:59'));
+
+    page.poll();
+    await page.respond(outside);
+    page.poll();
+
+    assert.equal(page.calls.at(-1).url, '/r1/token/arrivals?direction=outward');
 });
 
 test('the scroll wheel moves the list', async () => {

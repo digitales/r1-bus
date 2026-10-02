@@ -11,7 +11,11 @@ final class TflClient
     private const BUS_STOP_TYPE = 'NaptanPublicBusCoachTram';
 
     /**
-     * @return list<array{id: string, name: string, towards: ?string}>
+     * Every bus stop at the places matching $query, each with its letter and
+     * direction. TfL's search only returns places (stop pairs, hubs), so the
+     * stops inside them come from one batched follow-up call.
+     *
+     * @return list<array{naptan_id: string, name: string, stop_letter: ?string, towards: ?string}>
      */
     public function searchStops(string $query): array
     {
@@ -23,28 +27,33 @@ final class TflClient
 
         $body = $this->get('/StopPoint/Search/'.rawurlencode($query), ['modes' => 'bus', 'maxResults' => 15]);
 
-        $places = [];
+        $ids = [];
 
         foreach ($body['matches'] ?? [] as $match) {
             if (isset($match['id'], $match['name'])) {
-                $places[] = [
-                    'id' => $match['id'],
-                    'name' => $match['name'],
-                    'towards' => $match['towards'] ?? null,
-                ];
+                $ids[] = $match['id'];
             }
         }
 
-        return $places;
+        return $ids === [] ? [] : $this->stopsAt(...$ids);
     }
 
     /**
+     * The individual bus stops inside one or more places, in one call.
+     *
      * @return list<array{naptan_id: string, name: string, stop_letter: ?string, towards: ?string}>
      */
-    public function stopsAt(string $id): array
+    public function stopsAt(string ...$ids): array
     {
+        $body = $this->get('/StopPoint/'.implode(',', array_map(rawurlencode(...), $ids)));
+
         $stops = [];
-        $this->collectBusStops($this->get('/StopPoint/'.rawurlencode($id)), $stops);
+
+        foreach (array_is_list($body) ? $body : [$body] as $node) {
+            if (is_array($node)) {
+                $this->collectBusStops($node, $stops);
+            }
+        }
 
         return $stops;
     }

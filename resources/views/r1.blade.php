@@ -43,6 +43,8 @@
             var footText = '';
             var lastLabel = null;
             var failedSince = null;
+            var direction = 'outward';
+            var again = false;
 
             function el(id) { return document.getElementById(id); }
 
@@ -85,12 +87,19 @@
                 if (label !== null) { el('check').textContent = label; }
             }
 
+            function directionLabel() {
+                return direction.charAt(0).toUpperCase() + direction.slice(1);
+            }
+
             function stopTitle(stop) {
                 return stop.letter ? stop.name + ', Stop ' + stop.letter : stop.name;
             }
 
             function show(data, wasCheck) {
                 failedSince = null;
+
+                // An answer for the direction that was showing before a flip.
+                if (data.direction && data.direction !== direction) { return; }
 
                 if (data.state === 'outside_window') {
                     inWindow = false;
@@ -99,6 +108,8 @@
                         return;
                     }
                     lastLabel = null;
+                    // Each window starts on outward, unless a flip is waiting its turn.
+                    if (!again) { direction = 'outward'; }
                     setHead('Outside hours', '');
                     setMessage(data.next_window_label);
                     setFoot('');
@@ -110,17 +121,17 @@
                 showingCheck = wasCheck && data.state === 'live';
 
                 if (data.state === 'no_stop') {
-                    setHead('Bus times', '');
-                    setMessage('No stop set. Use admin');
+                    setHead('Bus times', directionLabel());
+                    setMessage('No ' + direction + ' stop. Use admin');
                     lastLabel = null;
                     setFoot('');
                 } else if (data.state === 'unavailable') {
-                    setHead('Bus times', '');
+                    setHead('Bus times', directionLabel());
                     setMessage('TfL unavailable, retrying');
                     lastLabel = null;
                     setFoot('');
                 } else {
-                    setHead(stopTitle(data.stop), data.stop.towards ? 'towards ' + data.stop.towards : '');
+                    setHead(stopTitle(data.stop), directionLabel() + (data.stop.towards ? ', towards ' + data.stop.towards : ''));
                     if (data.arrivals.length) { setList(data.arrivals); } else { setMessage('No buses due'); }
                     lastLabel = data.fetched_label;
                     setFoot(data.stale
@@ -152,7 +163,7 @@
                 busy = true;
                 var controller = new AbortController();
                 var timer = setTimeout(function () { controller.abort(); }, 15000);
-                fetch(url + (check ? '?check=1' : ''), { headers: { Accept: 'application/json' }, cache: 'no-store', signal: controller.signal })
+                fetch(url + '?direction=' + direction + (check ? '&check=1' : ''), { headers: { Accept: 'application/json' }, cache: 'no-store', signal: controller.signal })
                     .then(function (response) {
                         if (!response.ok) { throw new Error(response.status); }
                         return response.json();
@@ -162,11 +173,24 @@
                     .then(function () {
                         clearTimeout(timer);
                         busy = false;
+                        if (again) {
+                            again = false;
+                            load(!inWindow);
+                        }
                     });
             }
 
+            // Outside a window the other direction can only be seen by checking it.
+            function toggle() {
+                direction = direction === 'outward' ? 'inward' : 'outward';
+                el('towards').textContent = directionLabel();
+                again = busy;
+                load(!inWindow);
+            }
+
             el('check').addEventListener('click', function () { load(true); });
-            window.addEventListener('sideClick', function () { load(!inWindow); });
+            el('head').addEventListener('click', toggle);
+            window.addEventListener('sideClick', function () { if (inWindow) { toggle(); } else { load(true); } });
             window.addEventListener('scrollDown', function () { el('list').scrollBy(0, 38); });
             window.addEventListener('scrollUp', function () { el('list').scrollBy(0, -38); });
 

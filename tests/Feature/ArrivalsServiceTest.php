@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\Direction;
 use App\Enums\Slot;
 use App\Exceptions\TflUnavailable;
 use App\Models\StopSchedule;
@@ -23,6 +24,37 @@ it('returns null when the slot has no stop', function () {
     Http::fake();
 
     expect(app(ArrivalsService::class)->forSlot(Slot::Afternoon))->toBeNull();
+
+    Http::assertNothingSent();
+});
+
+it('uses the stop saved for the requested direction', function () {
+    StopSchedule::create([
+        'slot' => Slot::Morning,
+        'direction' => Direction::Inward,
+        'naptan_id' => '490000129E',
+        'name' => 'Kings Cross Station',
+    ]);
+    Http::fake(['api.tfl.gov.uk/StopPoint/490000129E/Arrivals*' => Http::response([])]);
+
+    $service = app(ArrivalsService::class);
+
+    expect($service->forSlot(Slot::Morning, Direction::Inward)->stop->name)->toBe('Kings Cross Station');
+});
+
+it('treats a stop saved without a direction as outward', function () {
+    Http::fake(['api.tfl.gov.uk/StopPoint/490000007F/Arrivals*' => Http::response([])]);
+
+    $service = app(ArrivalsService::class);
+
+    expect($service->forSlot(Slot::Morning, Direction::Outward)->stop->name)->toBe('Angel Station')
+        ->and($service->forSlot(Slot::Morning)->stop->direction)->toBe(Direction::Outward);
+});
+
+it('returns null when the direction has no stop', function () {
+    Http::fake();
+
+    expect(app(ArrivalsService::class)->forSlot(Slot::Morning, Direction::Inward))->toBeNull();
 
     Http::assertNothingSent();
 });

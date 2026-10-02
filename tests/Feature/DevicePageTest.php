@@ -17,6 +17,13 @@ it('serves the creation page with its arrivals url', function () {
         ->assertSee('Check now', false);
 });
 
+it('asks for a direction and lets the header flip it', function () {
+    $this->get(deviceUrl())
+        ->assertOk()
+        ->assertSee("'?direction=' + direction", false)
+        ->assertSee("el('head').addEventListener('click', toggle)", false);
+});
+
 it('returns 404 for the page with a wrong token', function () {
     $this->get('/r1/not-the-token')->assertNotFound();
 });
