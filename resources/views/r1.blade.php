@@ -51,6 +51,7 @@
             var direction = 'outward';
             var again = false;
             var nextPollAt = Date.now() + every;
+            var sleepUntil = null;
 
             function el(id) { return document.getElementById(id); }
 
@@ -119,6 +120,9 @@
 
                 if (data.state === 'outside_window') {
                     inWindow = false;
+                    // Nothing changes until the next window, so polling waits
+                    // for it by the R1's own clock and the app can hibernate.
+                    sleepUntil = data.next_window ? Date.parse(data.next_window) : null;
                     if (showingCheck) {
                         el('foot').textContent = footText;
                         return;
@@ -214,6 +218,7 @@
 
             load(false);
             setInterval(function () {
+                if (sleepUntil !== null && Date.now() < sleepUntil) { return; }
                 nextPollAt = Date.now() + every;
                 load(false);
             }, every);

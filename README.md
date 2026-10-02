@@ -2,7 +2,7 @@
 
 Live TfL bus arrivals on a Rabbit R1, for the stops you wait at on the way out and the way back.
 
-The R1 loads one small web page, 240 by 282 pixels, served by this Laravel app. The page asks the app for arrivals every 20 seconds. The app asks TfL, caches the answer, and sends back the next buses for the right stop.
+The R1 loads one small web page, 240 by 282 pixels, served by this Laravel app. Inside a period the page asks the app for arrivals every 20 seconds. The app asks TfL, caches the answer, and sends back the next buses for the right stop.
 
 There is no database. The stops, the R1 link token and the admin login live in one JSON file, `bus.json`, on the default filesystem disk.
 
@@ -17,7 +17,7 @@ Inside a period the R1 shows the outward stop first.
 - The line under the stop name says which direction is showing, for example "Outward, towards Blackheath".
 - The number in the top right counts down the seconds to the next automatic refresh.
 
-Outside a period the R1 shows when the next one starts and does not call TfL.
+Outside a period the R1 shows when the next one starts and does not call TfL. The page stops asking the app too, and starts again by the R1's own clock when the next period begins, so a hibernating host can sleep with the R1 left open.
 
 - Press "Check now" or the side button to fetch the upcoming period's buses once.
 - Tap the header to check the other direction.
