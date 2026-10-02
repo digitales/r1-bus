@@ -25,3 +25,8 @@ function tflPrediction(string $line, string $destination, DateTimeInterface $exp
         'timeToStation' => $expected->getTimestamp() - now()->getTimestamp(),
     ];
 }
+
+function deviceUrl(string $path = ''): string
+{
+    return '/r1/'.app(App\Services\DeviceToken::class)->current().$path;
+}
