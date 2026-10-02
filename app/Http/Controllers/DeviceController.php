@@ -55,7 +55,7 @@ class DeviceController extends Controller
             'direction' => $result->stop->direction->value,
             'stop' => [
                 'name' => $result->stop->name,
-                'letter' => $result->stop->stop_letter,
+                'letter' => $result->stop->stopLetter,
                 'towards' => $result->stop->towards,
             ],
             'arrivals' => $result->arrivals,

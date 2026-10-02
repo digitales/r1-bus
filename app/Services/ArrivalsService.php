@@ -2,31 +2,28 @@
 
 namespace App\Services;
 
+use App\Data\Stop;
 use App\Enums\Direction;
 use App\Enums\Slot;
 use App\Exceptions\TflUnavailable;
-use App\Models\StopSchedule;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Cache;
 use Throwable;
 
 final class ArrivalsService
 {
-    public function __construct(private TflClient $tfl) {}
+    public function __construct(private TflClient $tfl, private BusStore $store) {}
 
     public function forSlot(Slot $slot, Direction $direction = Direction::Outward): ?ArrivalsResult
     {
-        $stop = StopSchedule::query()
-            ->where('slot', $slot->value)
-            ->where('direction', $direction->value)
-            ->first();
+        $stop = $this->store->stop($slot, $direction);
 
         if ($stop === null) {
             return null;
         }
 
-        $freshKey = "arrivals:fresh:{$stop->naptan_id}";
-        $lastGoodKey = "arrivals:last-good:{$stop->naptan_id}";
+        $freshKey = "arrivals:fresh:{$stop->naptanId}";
+        $lastGoodKey = "arrivals:last-good:{$stop->naptanId}";
 
         if ($snapshot = Cache::get($freshKey)) {
             return $this->result($stop, $snapshot, stale: false);
@@ -35,7 +32,7 @@ final class ArrivalsService
         try {
             $snapshot = [
                 'fetched_at' => now()->getTimestamp(),
-                'arrivals' => $this->snapshot($this->tfl->arrivals($stop->naptan_id)),
+                'arrivals' => $this->snapshot($this->tfl->arrivals($stop->naptanId)),
             ];
         } catch (TflUnavailable $exception) {
             $lastGood = Cache::get($lastGoodKey);
@@ -83,7 +80,7 @@ final class ArrivalsService
         return $arrivals;
     }
 
-    private function result(StopSchedule $stop, array $snapshot, bool $stale): ArrivalsResult
+    private function result(Stop $stop, array $snapshot, bool $stale): ArrivalsResult
     {
         $now = now()->getTimestamp();
         $arrivals = [];

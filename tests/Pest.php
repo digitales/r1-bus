@@ -1,5 +1,9 @@
 <?php
 
+use App\Data\Stop;
+use App\Enums\Direction;
+use App\Enums\Slot;
+use App\Services\BusStore;
 use App\Services\DeviceToken;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -32,4 +36,25 @@ function tflPrediction(string $line, string $destination, DateTimeInterface $exp
 function deviceUrl(string $path = ''): string
 {
     return '/r1/'.app(DeviceToken::class)->current().$path;
+}
+
+/**
+ * Save a stop the way the admin page would.
+ */
+function saveStop(Slot $slot, string $naptanId, string $name, Direction $direction = Direction::Outward): Stop
+{
+    $stop = new Stop($slot, $direction, $naptanId, $name, 'F', 'Holborn');
+    app(BusStore::class)->saveStop($stop);
+
+    return $stop;
+}
+
+/**
+ * Every saved stop, in slot then direction order.
+ *
+ * @return list<Stop>
+ */
+function savedStops(): array
+{
+    return collect(app(BusStore::class)->stops())->flatten()->all();
 }

@@ -12,7 +12,7 @@
 
                     <p class="current">
                         @if ($current)
-                            {{ $current->name }}@if ($current->stop_letter), Stop {{ $current->stop_letter }}@endif
+                            {{ $current->name }}@if ($current->stopLetter), Stop {{ $current->stopLetter }}@endif
                             @if ($current->towards)
                                 <span class="muted">towards {{ $current->towards }}</span>
                             @endif

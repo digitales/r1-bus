@@ -1,10 +1,11 @@
 <?php
 
+use App\Data\Stop;
 use App\Enums\Direction;
 use App\Enums\Slot;
 use App\Livewire\StopScheduleEditor;
-use App\Models\StopSchedule;
 use App\Models\User;
+use App\Services\BusStore;
 use App\Services\DeviceToken;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Http;
@@ -133,7 +134,7 @@ it('clears a search without saving anything', function () {
         ->assertSet('stops.morning.outward', [])
         ->assertDontSee('Pick');
 
-    expect(StopSchedule::count())->toBe(0);
+    expect(savedStops())->toBe([]);
 });
 
 it('confirms the stop it saved until the next search', function () {
@@ -158,33 +159,27 @@ it('marks the search and the choices as busy while TfL is being asked', function
 it('saves only the stop that was chosen, with its letter and direction', function () {
     $component = searchVictoria('afternoon');
 
-    expect(StopSchedule::count())->toBe(0);
+    expect(savedStops())->toBe([]);
 
     $component->call('chooseStop', 'afternoon', 'outward', '490014050B')
         ->assertSet('stops.afternoon.outward', []);
 
-    $saved = StopSchedule::sole();
-    expect($saved->slot)->toBe(Slot::Afternoon)
-        ->and($saved->direction)->toBe(Direction::Outward)
-        ->and($saved->only(['naptan_id', 'name', 'stop_letter', 'towards']))->toBe([
-            'naptan_id' => '490014050B',
-            'name' => 'Victoria Bus Station',
-            'stop_letter' => 'B',
-            'towards' => 'Pimlico',
-        ]);
+    expect(savedStops())->toEqual([
+        new Stop(Slot::Afternoon, Direction::Outward, '490014050B', 'Victoria Bus Station', 'B', 'Pimlico'),
+    ]);
 });
 
 it('replaces the existing stop for a slot instead of adding another', function () {
-    StopSchedule::create(['slot' => Slot::Morning, 'naptan_id' => 'OLD', 'name' => 'Old Stop']);
+    saveStop(Slot::Morning, 'OLD', 'Old Stop');
 
     searchVictoria()->call('chooseStop', 'morning', 'outward', '490000248G');
 
-    expect(StopSchedule::count())->toBe(1)
-        ->and(StopSchedule::sole()->naptan_id)->toBe('490000248G');
+    expect(savedStops())->toHaveCount(1)
+        ->and(savedStops()[0]->naptanId)->toBe('490000248G');
 });
 
 it('saves the inward stop without touching the outward one', function () {
-    StopSchedule::create(['slot' => Slot::Morning, 'naptan_id' => 'OUT', 'name' => 'Outward Stop']);
+    saveStop(Slot::Morning, 'OUT', 'Outward Stop');
 
     searchVictoria('morning', 'inward')
         ->assertSet('stops.morning.outward', [])
@@ -193,9 +188,11 @@ it('saves the inward stop without touching the outward one', function () {
         ->assertSet('notice.morning.outward', null)
         ->assertSeeInOrder(['Outward', 'Outward Stop', 'Inward', 'Victoria Station']);
 
-    expect(StopSchedule::count())->toBe(2)
-        ->and(StopSchedule::where('direction', Direction::Outward)->sole()->naptan_id)->toBe('OUT')
-        ->and(StopSchedule::where('direction', Direction::Inward)->sole()->naptan_id)->toBe('490000248G');
+    $store = app(BusStore::class);
+
+    expect(savedStops())->toHaveCount(2)
+        ->and($store->stop(Slot::Morning, Direction::Outward)->naptanId)->toBe('OUT')
+        ->and($store->stop(Slot::Morning, Direction::Inward)->naptanId)->toBe('490000248G');
 });
 
 it('ignores a stop id that was not offered, an unknown slot and an unknown direction', function () {
@@ -210,12 +207,12 @@ it('ignores a stop id that was not offered, an unknown slot and an unknown direc
         ->call('cancel', 'morning', 'sideways')
         ->assertCount('stops.morning.outward', 3);
 
-    expect(StopSchedule::count())->toBe(0);
+    expect(savedStops())->toBe([]);
     Http::assertSentCount(2);
 });
 
 it('shows an error and keeps the saved stop when TfL is down', function () {
-    StopSchedule::create(['slot' => Slot::Morning, 'naptan_id' => '490000007F', 'name' => 'Angel Station']);
+    saveStop(Slot::Morning, '490000007F', 'Angel Station');
     Http::fake(['api.tfl.gov.uk/*' => Http::response('Bad gateway', 502)]);
 
     Livewire::test(StopScheduleEditor::class)
@@ -224,7 +221,7 @@ it('shows an error and keeps the saved stop when TfL is down', function () {
         ->assertSet('problem.morning.outward', 'TfL is not answering. Try again in a moment.')
         ->assertSee('Angel Station');
 
-    expect(StopSchedule::sole()->naptan_id)->toBe('490000007F');
+    expect(savedStops()[0]->naptanId)->toBe('490000007F');
 });
 
 it('regenerates the R1 link', function () {

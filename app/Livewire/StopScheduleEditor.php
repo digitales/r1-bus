@@ -2,10 +2,11 @@
 
 namespace App\Livewire;
 
+use App\Data\Stop;
 use App\Enums\Direction;
 use App\Enums\Slot;
 use App\Exceptions\TflUnavailable;
-use App\Models\StopSchedule;
+use App\Services\BusStore;
 use App\Services\DeviceToken;
 use App\Services\TflClient;
 use Illuminate\View\View;
@@ -98,16 +99,10 @@ class StopScheduleEditor extends Component
 
     public function render(): View
     {
-        $saved = [];
-
-        foreach (StopSchedule::all() as $stop) {
-            $saved[$stop->slot->value][$stop->direction->value] = $stop;
-        }
-
         return view('livewire.stop-schedule-editor', [
             'cases' => Slot::cases(),
             'directions' => Direction::cases(),
-            'saved' => $saved,
+            'saved' => app(BusStore::class)->stops(),
             'deviceUrl' => route('r1.show', ['token' => app(DeviceToken::class)->current()]),
         ]);
     }
@@ -125,12 +120,14 @@ class StopScheduleEditor extends Component
 
     private function save(Slot $slot, Direction $direction, array $stop): void
     {
-        StopSchedule::updateOrCreate(['slot' => $slot->value, 'direction' => $direction->value], [
-            'naptan_id' => $stop['naptan_id'],
-            'name' => $stop['name'],
-            'stop_letter' => $stop['stop_letter'],
-            'towards' => $stop['towards'],
-        ]);
+        app(BusStore::class)->saveStop(new Stop(
+            $slot,
+            $direction,
+            $stop['naptan_id'],
+            $stop['name'],
+            $stop['stop_letter'],
+            $stop['towards'],
+        ));
 
         $this->query[$slot->value][$direction->value] = '';
         $this->clear($slot, $direction);

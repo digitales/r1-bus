@@ -3,7 +3,6 @@
 use App\Enums\Direction;
 use App\Enums\Slot;
 use App\Exceptions\TflUnavailable;
-use App\Models\StopSchedule;
 use App\Services\ArrivalsService;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Http;
@@ -11,13 +10,7 @@ use Illuminate\Support\Facades\Http;
 beforeEach(function () {
     $this->travelTo(CarbonImmutable::parse('2026-10-05 07:00:00', 'Europe/London'));
 
-    StopSchedule::create([
-        'slot' => Slot::Morning,
-        'naptan_id' => '490000007F',
-        'name' => 'Angel Station',
-        'stop_letter' => 'F',
-        'towards' => 'Holborn',
-    ]);
+    saveStop(Slot::Morning, '490000007F', 'Angel Station');
 });
 
 it('returns null when the slot has no stop', function () {
@@ -29,12 +22,7 @@ it('returns null when the slot has no stop', function () {
 });
 
 it('uses the stop saved for the requested direction', function () {
-    StopSchedule::create([
-        'slot' => Slot::Morning,
-        'direction' => Direction::Inward,
-        'naptan_id' => '490000129E',
-        'name' => 'Kings Cross Station',
-    ]);
+    saveStop(Slot::Morning, '490000129E', 'Kings Cross Station', Direction::Inward);
     Http::fake(['api.tfl.gov.uk/StopPoint/490000129E/Arrivals*' => Http::response([])]);
 
     $service = app(ArrivalsService::class);

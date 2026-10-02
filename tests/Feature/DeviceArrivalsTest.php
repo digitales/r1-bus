@@ -2,21 +2,8 @@
 
 use App\Enums\Direction;
 use App\Enums\Slot;
-use App\Models\StopSchedule;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Http;
-
-function saveStop(Slot $slot, string $naptanId, string $name, Direction $direction = Direction::Outward): StopSchedule
-{
-    return StopSchedule::create([
-        'slot' => $slot,
-        'direction' => $direction,
-        'naptan_id' => $naptanId,
-        'name' => $name,
-        'stop_letter' => 'F',
-        'towards' => 'Holborn',
-    ]);
-}
 
 function travelToLondon(string $time): void
 {
