@@ -15,6 +15,7 @@ Inside a period the R1 shows the outward stop first.
 - Tap the header or press the side button to flip between outward and inward.
 - Turn the scroll wheel to move through the list.
 - The line under the stop name says which direction is showing, for example "Outward, towards Blackheath".
+- The number in the top right counts down the seconds to the next automatic refresh.
 
 Outside a period the R1 shows when the next one starts and does not call TfL.
 

@@ -30,11 +30,12 @@ const flush = () => new Promise((resolve) => setImmediate(resolve));
 
 function boot() {
     const els = {};
-    for (const id of ['head', 'stop', 'towards', 'list', 'msg', 'check', 'foot']) { els[id] = new El(); }
+    for (const id of ['head', 'stop', 'count', 'towards', 'list', 'msg', 'check', 'foot']) { els[id] = new El(); }
     els.list.hidden = true;
     els.check.hidden = true;
+    els.count.hidden = true;
 
-    const page = { els, calls: [], now: 0, timers: [], windowListeners: {}, poll: null };
+    const page = { els, calls: [], now: 0, timers: [], windowListeners: {}, poll: null, tick: null };
 
     vm.runInNewContext(script, {
         document: { getElementById: (id) => els[id], createElement: () => new El() },
@@ -43,7 +44,8 @@ function boot() {
             page.calls.push({ url, resolve, reject });
             if (options.signal) { options.signal.addEventListener('abort', () => reject(new Error('aborted'))); }
         }),
-        setInterval: (handler) => { page.poll = handler; },
+        // The page runs a one second ticker for the countdown and a slower poll.
+        setInterval: (handler, ms) => { if (ms === 1000) { page.tick = handler; } else { page.poll = handler; } },
         setTimeout: (handler, ms) => { const timer = { handler, at: page.now + ms, cleared: false }; page.timers.push(timer); return timer; },
         clearTimeout: (timer) => { if (timer) { timer.cleared = true; } },
         Date: { now: () => page.now },
@@ -64,6 +66,10 @@ function boot() {
             if (!timer.cleared && timer.at <= page.now) { timer.cleared = true; timer.handler(); }
         }
         await flush();
+    };
+    page.wait = (ms) => {
+        page.now += ms;
+        page.tick();
     };
     page.rows = () => els.list.children.map((row) => row.children.map((cell) => cell.text).join(' | '));
 
@@ -202,6 +208,80 @@ test('the next window starts on outward again', async () => {
     page.poll();
 
     assert.equal(page.calls.at(-1).url, '/r1/token/arrivals?direction=outward');
+});
+
+test('inside a window the header counts down to the next refresh', async () => {
+    const page = boot();
+    await page.respond(live('07:41'));
+
+    assert.equal(page.els.count.hidden, false);
+    assert.equal(page.els.count.text, '20s');
+
+    page.wait(1000);
+    assert.equal(page.els.count.text, '19s');
+    page.wait(5400);
+    assert.equal(page.els.count.text, '14s');
+    page.wait(60000);
+    assert.equal(page.els.count.text, '0s');
+});
+
+test('the countdown shows a refresh in progress and starts again after it', async () => {
+    const page = boot();
+    await page.respond(live('07:41'));
+    page.wait(20000);
+
+    page.poll();
+    assert.equal(page.els.count.text, '\u2026');
+    await page.respond(live('07:42'));
+
+    assert.equal(page.els.count.text, '20s');
+});
+
+test('there is no countdown outside a window or on a Check now result', async () => {
+    const page = boot();
+    assert.equal(page.els.count.hidden, true);
+    await page.respond(outside);
+    page.wait(1000);
+    assert.equal(page.els.count.hidden, true);
+
+    page.els.check.listeners.click();
+    await page.respond(live('10:02'));
+    page.wait(1000);
+    assert.equal(page.els.count.hidden, true);
+});
+
+test('the countdown goes away when the window ends', async () => {
+    const page = boot();
+    await page.respond(live('08:59'));
+    assert.equal(page.els.count.hidden, false);
+
+    page.poll();
+    await page.respond(outside);
+
+    assert.equal(page.els.count.hidden, true);
+});
+
+test('flipping direction does not restart the countdown', async () => {
+    const page = boot();
+    await page.respond(live('07:41'));
+    page.wait(6000);
+
+    page.els.head.listeners.click();
+    await page.respond(liveInward('07:41'));
+
+    assert.equal(page.els.count.text, '14s');
+});
+
+test('the countdown keeps running while the connection is down', async () => {
+    const page = boot();
+    await page.respond(live('07:41'));
+
+    page.poll();
+    await page.drop();
+    page.wait(3000);
+
+    assert.equal(page.els.count.hidden, false);
+    assert.equal(page.els.count.text, '17s');
 });
 
 test('the scroll wheel moves the list', async () => {
