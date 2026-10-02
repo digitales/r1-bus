@@ -1,7 +1,9 @@
 <?php
 
+use App\Services\DeviceToken;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Sleep;
 use Tests\TestCase;
 
@@ -9,6 +11,7 @@ pest()->extend(TestCase::class)
     ->use(RefreshDatabase::class)
     ->beforeEach(function () {
         Http::preventStrayRequests();
+        Storage::fake('local');
         Sleep::fake();
     })
     ->in('Feature', 'Unit');
@@ -28,5 +31,5 @@ function tflPrediction(string $line, string $destination, DateTimeInterface $exp
 
 function deviceUrl(string $path = ''): string
 {
-    return '/r1/'.app(App\Services\DeviceToken::class)->current().$path;
+    return '/r1/'.app(DeviceToken::class)->current().$path;
 }
