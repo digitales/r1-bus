@@ -4,6 +4,8 @@ Live TfL bus arrivals on a Rabbit R1, for the stops you wait at on the way out a
 
 The R1 loads one small web page, 240 by 282 pixels, served by this Laravel app. The page asks the app for arrivals every 20 seconds. The app asks TfL, caches the answer, and sends back the next buses for the right stop.
 
+There is no database. The stops, the R1 link token and the admin login live in one JSON file, `bus.json`, on the default filesystem disk.
+
 ## How it behaves
 
 There are two periods on weekdays. Morning runs 06:30 to 09:00 and afternoon runs 14:30 to 15:30, London time. Each period has an outward stop and an inward stop, so four stops in total. You can leave any of them unset.
@@ -31,10 +33,11 @@ You need PHP 8.3 or newer and Composer. Node is only needed for the page script 
 composer install
 cp .env.example .env
 php artisan key:generate
-php artisan migrate
 php artisan bus:make-admin you@example.com
 php artisan serve
 ```
+
+Locally `bus.json` is written to `storage/app/private/`. Delete it to start again.
 
 Then open `http://localhost:8000/login`, sign in, and search for a stop in each Outward and Inward box. TfL lists every stop at a place with its letter and where it heads, so pick the one on your side of the road.
 
@@ -46,14 +49,28 @@ The R1 installs a creation by scanning a QR code that points at a URL. The R1 ha
 
 ### 1. Put the app on a public HTTPS address
 
-Deploy it to any host that runs Laravel. On the server:
+Deploy it to any host that runs Laravel and can give it a disk that survives a deploy. On Laravel Cloud that disk is an object storage bucket, because the app's own filesystem is wiped on every deploy.
 
-```sh
-php artisan migrate --force
-php artisan bus:make-admin you@example.com
-```
+1. Create a Laravel Object Storage bucket and attach it to the environment. Make it **private** and mark it as the default disk. `bus.json` holds the R1 token and the admin password hash, and a public bucket would serve both at a public URL. Visibility is fixed when the bucket is created.
+2. Set these environment variables:
 
-Set `APP_URL` to the public address and set `TFL_APP_KEY`. The app needs no scheduler and no queue worker.
+   ```
+   APP_URL=https://your-host
+   TFL_APP_KEY=your-key
+   SESSION_DRIVER=cookie
+   SESSION_LIFETIME=43200
+   CACHE_STORE=file
+   QUEUE_CONNECTION=sync
+   ```
+
+3. Remove `php artisan migrate` from the deploy commands if it is there. There is nothing to migrate.
+4. Deploy, then run this once from the environment's command runner:
+
+   ```sh
+   php artisan bus:make-admin you@example.com
+   ```
+
+The app needs no database, no scheduler and no queue worker. Do not run more than one instance. The cache and rate limits are per instance.
 
 If the host has no terminal to prompt on, pass the password inline with `--password='...'`. It will show in that runner's command history, so prefer the prompt when you have one.
 
@@ -104,4 +121,4 @@ Periods, weekdays and limits live in `config/bus.php`.
 npm test            # the R1 page script, Node only, no install needed
 ```
 
-Run both. The page script tests load the script out of `resources/views/r1.blade.php` and run it against a fake DOM, so a change to the R1 screen can break them while Pest stays green.
+Run both. The Pest suite points the default database connection at nothing, so any code that reaches for a database fails. The page script tests load the script out of `resources/views/r1.blade.php` and run it against a fake DOM, so a change to the R1 screen can break them while Pest stays green.

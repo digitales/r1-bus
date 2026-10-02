@@ -6,7 +6,6 @@ use App\Enums\Slot;
 use App\Services\BusStore;
 use App\Services\DeviceToken;
 use Illuminate\Contracts\Auth\Authenticatable;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Http;
@@ -15,10 +14,11 @@ use Illuminate\Support\Sleep;
 use Tests\TestCase;
 
 pest()->extend(TestCase::class)
-    ->use(RefreshDatabase::class)
     ->beforeEach(function () {
         Http::preventStrayRequests();
         Storage::fake('local');
+        // The app has no database. Anything that reaches for one fails loudly.
+        config(['database.default' => 'none']);
         Sleep::fake();
     })
     ->in('Feature', 'Unit');
